@@ -252,6 +252,15 @@ Config::save(std::filesystem::path configFile) {
   if(configFile.empty())
     configFile = this->configFile.get();
 
+  if(const std::filesystem::path parent = configFile.parent_path(); !parent.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+    if(ec) {
+      throw std::runtime_error(fmt::format(
+        "failed to create config directory {}: {}", parent, ec.message()));
+    }
+  }
+
   int xmlStatus = XML_ERR_OK;
   {
   xmlTextWriterPtr xmlWriter =
@@ -305,7 +314,7 @@ Config::save(std::filesystem::path configFile) {
 void
 Config::init(int argc, char** argv) {
   if(const char *envConfigFile = getenv("LINCITYNG_CONFIG_FILE"))
-    userDataDir.session = std::filesystem::path(envConfigFile);
+    configFile.session = std::filesystem::path(envConfigFile);
   if(const char *envAppDataDir = getenv("LINCITYNG_APP_DATA_DIR"))
     appDataDir.session = std::filesystem::path(envAppDataDir);
   if(const char *envUserDataDir = getenv("LINCITYNG_USER_DATA_DIR"))
@@ -349,11 +358,6 @@ Config::init(int argc, char** argv) {
     } else if(argStr == "-m" || argStr == "--mute") {
       soundEnabled.session = false;
       musicEnabled.session = false;
-    } else if(argStr == "--config" || argStr == "-c") {
-      argi++;
-      if(argi >= argc)
-        throw std::runtime_error(fmt::format("{} needs a parameter", argStr));
-      configFile.session = std::filesystem::path(argv[argi]);
     } else if(argStr == "--app-data") {
       argi++;
       if(argi >= argc)
@@ -387,10 +391,18 @@ Config::init(int argc, char** argv) {
   }
 
   if(!std::filesystem::is_directory(userDataDir.get())) {
-    fmt::println(stderr, "error: user data location is not a directory: {}"
-      "\n  Use `--user-data` to set the correct app data location.",
-      userDataDir.get()
-    );
+    std::error_code ec;
+    if(std::filesystem::create_directories(userDataDir.get(), ec)) {
+      fmt::println(stderr, "info: created user data directory: {}",
+        userDataDir.get());
+    }
+    else if(ec) {
+      fmt::println(stderr, "error: user data location is not a directory: {}"
+        "\n  Failed to create user data directory: {}"
+        "\n  Use `--user-data` to set the correct app data location.",
+        userDataDir.get(), ec.message()
+      );
+    }
   }
 
 #ifdef DISABLE_GL_MODE

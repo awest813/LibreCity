@@ -69,6 +69,9 @@
 #endif
 
 #ifdef WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
 #undef bindtextdomain
 #define bindtextdomain wbindtextdomain
 #endif
@@ -241,12 +244,68 @@ getLang() {
   return "";
 }
 
+#ifdef WIN32
+/**
+ * Initialize console output on Windows.
+ * On Windows, GUI applications don't have a console by default,
+ * so we need to allocate or attach to one to see stdout/stderr output.
+ * This is essential for debugging and error reporting.
+ */
+void initWindowsConsole() {
+  // Try to attach to parent console first (if launched from cmd.exe)
+  bool hasConsole = AttachConsole(ATTACH_PARENT_PROCESS);
+
+  if (!hasConsole) {
+    // If no parent console, allocate a new one
+    hasConsole = AllocConsole();
+  }
+
+  if (hasConsole) {
+    // Redirect stdout, stderr, and stdin to the console
+    FILE* fp = nullptr;
+
+    // Reopen stdout
+    if (freopen_s(&fp, "CONOUT$", "w", stdout) != 0) {
+      // Failed to reopen stdout, but continue anyway
+    }
+
+    // Reopen stderr
+    if (freopen_s(&fp, "CONOUT$", "w", stderr) != 0) {
+      // Failed to reopen stderr, but continue anyway
+    }
+
+    // Reopen stdin
+    if (freopen_s(&fp, "CONIN$", "r", stdin) != 0) {
+      // Failed to reopen stdin, but continue anyway
+    }
+
+    // Make sure C++ streams are synced with C streams
+    std::cout.clear();
+    std::cerr.clear();
+    std::cin.clear();
+
+    // Ensure buffering is disabled for immediate output
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
+
+    // Set console title to help users identify the window
+    SetConsoleTitleA("LinCity-NG Debug Console");
+  }
+}
+#endif
+
 void mainLoop() {
   MainMenu(window).run();
 }
 
 int
 main(int argc, char** argv) {
+#ifdef WIN32
+  // Initialize console on Windows so debug output is visible
+  // This allows stdout/stderr to work in GUI applications on Windows
+  initWindowsConsole();
+#endif
+
   // initialize XML parser early because it is needed for parsing the config
   LIBXML_TEST_VERSION;
 #if LIBXML_VERSION < 21400

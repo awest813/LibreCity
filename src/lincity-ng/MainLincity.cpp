@@ -54,13 +54,35 @@ void setSimulationDelay( int speed )
  */
 void saveCityNG(const World& world, const std::filesystem::path& filename) {
   std::filesystem::path fullname = filename;
+
+  // Ensure the parent directory exists before trying to save
+  // This prevents crashes on Windows when the save directory doesn't exist
+  try {
+    std::filesystem::path parentDir = fullname.parent_path();
+    if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
+      std::filesystem::create_directories(parentDir);
+    }
+  } catch (const std::filesystem::filesystem_error& e) {
+    std::cerr << "warning: failed to create save directory: " << e.what() << std::endl;
+    // Continue anyway and let world.save() fail with proper error dialog if needed
+  }
+
   try {
     world.save(fullname);
     std::cout << "saved game to '" << fullname << "'" << std::endl;
-  } catch(std::runtime_error err) {
+  } catch(std::runtime_error& err) {
     std::cerr << "error: failed to save game to '" << fullname << "': "
       << err.what() << std::endl;
-    assert(false);
+    // Show error dialog instead of crashing with assert
+    // This is much better for Windows users
+    DialogBuilder()
+      .titleText(_("Error"))
+      .messageAddTextBold(_("Error: Failed to save game."))
+      .messageAddText(fmt::format(_("Could not save to {}."), fullname))
+      .messageAddText(err.what())
+      .imageFile("images/gui/dialogs/error.png")
+      .buttonSet(DialogBuilder::ButtonSet::OK)
+      .build();
   }
 }
 

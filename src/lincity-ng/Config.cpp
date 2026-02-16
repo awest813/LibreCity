@@ -252,6 +252,19 @@ Config::save(std::filesystem::path configFile) {
   if(configFile.empty())
     configFile = this->configFile.get();
 
+  // Ensure the parent directory exists before trying to save
+  // This is especially important on Windows where the AppData directory
+  // structure may not exist on first run
+  try {
+    std::filesystem::path parentDir = configFile.parent_path();
+    if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
+      std::filesystem::create_directories(parentDir);
+    }
+  } catch (const std::filesystem::filesystem_error& e) {
+    fmt::println(stderr, "warning: failed to create config directory: {}", e.what());
+    // Continue anyway and let the XML writer fail if needed
+  }
+
   int xmlStatus = XML_ERR_OK;
   {
   xmlTextWriterPtr xmlWriter =
@@ -305,7 +318,7 @@ Config::save(std::filesystem::path configFile) {
 void
 Config::init(int argc, char** argv) {
   if(const char *envConfigFile = getenv("LINCITYNG_CONFIG_FILE"))
-    userDataDir.session = std::filesystem::path(envConfigFile);
+    configFile.session = std::filesystem::path(envConfigFile);
   if(const char *envAppDataDir = getenv("LINCITYNG_APP_DATA_DIR"))
     appDataDir.session = std::filesystem::path(envAppDataDir);
   if(const char *envUserDataDir = getenv("LINCITYNG_USER_DATA_DIR"))

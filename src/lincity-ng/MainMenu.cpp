@@ -23,7 +23,8 @@
 #include "MainMenu.hpp"
 
 #include <SDL.h>                        // for SDL_EventType, Uint32, SDL_Ge...
-#include <stdio.h>                      // for fprintf, size_t, stderr
+#include <stdio.h>                      // for size_t, stderr
+#include <fmt/base.h>                   // for println
 #include <algorithm>                    // for min, sort
 #include <array>                        // for array
 #include <cassert>                      // for assert
@@ -156,23 +157,41 @@ void MainMenu::updateLoadSaveMenus() {
   }
 
   std::filesystem::path dir = getConfig()->userDataDir.get();
-  for(auto& dirEnt : std::filesystem::directory_iterator(dir)) {
-    std::string fName = dirEnt.path().filename().string();
-    if(fName.substr(1, 1) != "_") continue;
-    unsigned long i = 0;
-    try { i = std::stoul(fName.substr(0,1)) - 1; }
-      catch(const std::invalid_argument& ex) { continue; }
-      catch(const std::out_of_range& ex) { continue; }
-    if(i >= buttonCount) continue;
-    if(!dirEnt.is_regular_file()) continue;
-    if(dirEnt.last_write_time() < fileTimes[i]) continue;
 
-    CheckButton *button = getCheckButton(*loadGameMenu, buttonNames[i]);
-    loadFiles.insert_or_assign(button, dirEnt.path());
-    button->setCaptionText(fName.c_str());
-    getCheckButton(*saveGameMenu, buttonNames[i])
-      ->setCaptionText(fName.c_str());
-    fileTimes[i] = dirEnt.last_write_time();
+  // Wrap directory iteration in try-catch to handle cases where:
+  // - Directory doesn't exist (fresh install)
+  // - Permission denied (Windows/Unix)
+  // - Path is not a directory
+  // This prevents crashes on Windows when the user data directory is not properly set up
+  try {
+    // Check if directory exists before iterating
+    if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir)) {
+      // Directory doesn't exist or is not a directory, leave slots empty
+      return;
+    }
+
+    for(auto& dirEnt : std::filesystem::directory_iterator(dir)) {
+      std::string fName = dirEnt.path().filename().string();
+      if(fName.length() < 2 || fName.substr(1, 1) != "_") continue;
+      unsigned long i = 0;
+      try { i = std::stoul(fName.substr(0,1)) - 1; }
+        catch(const std::invalid_argument& ex) { continue; }
+        catch(const std::out_of_range& ex) { continue; }
+      if(i >= buttonCount) continue;
+      if(!dirEnt.is_regular_file()) continue;
+      if(dirEnt.last_write_time() < fileTimes[i]) continue;
+
+      CheckButton *button = getCheckButton(*loadGameMenu, buttonNames[i]);
+      loadFiles.insert_or_assign(button, dirEnt.path());
+      button->setCaptionText(fName.c_str());
+      getCheckButton(*saveGameMenu, buttonNames[i])
+        ->setCaptionText(fName.c_str());
+      fileTimes[i] = dirEnt.last_write_time();
+    }
+  } catch (const std::filesystem::filesystem_error& e) {
+    // Log the error but don't crash - this is a common scenario on Windows
+    // especially on first run or if permissions are misconfigured
+    std::cerr << "Warning: Could not read save game directory: " << e.what() << std::endl;
   }
 }
 
@@ -825,7 +844,7 @@ MainMenu::loadGameSaveButtonClicked(Button *) {
   std::stringstream filename;
   filename << (i + 1) << "_Y";
   filename << std::setfill('0') << std::setw(5);
-  fprintf(stderr,"total_time %i\n", world.total_time);
+  fmt::println(stderr, "total_time {}", world.total_time);
   filename << world.total_time/1200;
   filename << "_Tech";
   filename << std::setfill('0') << std::setw(3);
